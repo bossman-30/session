@@ -1,73 +1,55 @@
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useSingleFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const express = require('express');
 const fs = require('fs');
+const http = require('http');
+const WebSocket = require('ws');
 const QRCode = require('qrcode');
-const { Boom } = require('@hapi/boom');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Use a single file to persist the auth state
 const { state, saveState } = useSingleFileAuthState('./auth_info.json');
 
-app.use(express.static('public'));
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-let sessionReady = false;
-let sessionData = null;
+let sock;
+let wsClient;
 
-async function startSock() {
-    const sock = makeWASocket({
+app.use(express.static(__dirname)); // Serve index.html
+
+wss.on('connection', async (ws) => {
+    wsClient = ws;
+
+    const { version } = await fetchLatestBaileysVersion();
+
+    sock = makeWASocket({
+        version,
         auth: state,
-        printQRInTerminal: false,
+        printQRInTerminal: false
     });
 
     sock.ev.on('creds.update', saveState);
 
     sock.ev.on('connection.update', async (update) => {
-        const { connection, qr, lastDisconnect } = update;
+        const { connection, qr } = update;
 
-        if (qr) {
+        if (qr && wsClient && wsClient.readyState === WebSocket.OPEN) {
             const qrDataURL = await QRCode.toDataURL(qr);
-            fs.writeFileSync('./public/qr.json', JSON.stringify({ qr: qrDataURL }));
+            wsClient.send(JSON.stringify({ qr: qrDataURL }));
+        }
+
+        if (connection === 'open') {
+            console.log('✅ WhatsApp connected');
+            if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+                wsClient.send(JSON.stringify({ status: 'connected', user: sock.user }));
+            }
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            if (shouldReconnect) {
-                startSock();
-            }
-        } else if (connection === 'open') {
-            sessionData = state.creds;
-            sessionReady = true;
-            fs.writeFileSync('./public/session.json', JSON.stringify(sessionData, null, 2));
+            console.log('🔴 WhatsApp connection closed');
         }
     });
-
-    return sock;
-}
-
-startSock();
-
-// API route to get QR code
-app.get('/qr', (req, res) => {
-    try {
-        const data = fs.readFileSync('./public/qr.json');
-        res.json(JSON.parse(data));
-    } catch (err) {
-        res.status(500).json({ error: 'QR not ready yet.' });
-    }
 });
 
-// API route to get session
-app.get('/session', (req, res) => {
-    try {
-        const data = fs.readFileSync('./public/session.json');
-        res.json(JSON.parse(data));
-    } catch (err) {
-        res.status(500).json({ error: 'Session not ready yet.' });
-    }
-});
-
-app.listen(PORT, () => {
-    console.log(`Server is running at http://localhost:${PORT}`);
+server.listen(3000, () => {
+    console.log('🔗 Server running at http://localhost:3000');
 });
