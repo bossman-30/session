@@ -2,63 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>WhatsApp QR Scanner</title>
+  <title>WhatsApp QR Login</title>
   <style>
     body {
-      font-family: Arial;
+      font-family: sans-serif;
       text-align: center;
-      padding: 40px;
+      padding-top: 50px;
+      background: #f9f9f9;
     }
     #qr {
       margin-top: 20px;
-      width: 300px;
-      height: 300px;
-      border: 2px solid #ccc;
-    }
-    #session {
-      margin-top: 20px;
-      text-align: left;
-      max-width: 600px;
-      word-wrap: break-word;
-      margin-left: auto;
-      margin-right: auto;
     }
   </style>
 </head>
 <body>
-  <h1>Scan WhatsApp QR Code</h1>
-  <p>Open WhatsApp → Linked Devices → Scan</p>
-  <img id="qr" src="" alt="QR Code will load here..." />
-  <div id="session">
-    <h2>Session Data</h2>
-    <pre id="session-data">Loading...</pre>
-  </div>
+  <h1>📲 Scan WhatsApp QR Code</h1>
+  <div id="status">Waiting for QR...</div>
+  <img id="qr" src="" width="250" />
 
   <script>
-    async function loadQR() {
-      try {
-        const res = await fetch('/qr');
-        const data = await res.json();
-        document.getElementById('qr').src = data.qr;
-      } catch {
-        setTimeout(loadQR, 1000); // Retry until QR is available
-      }
-    }
+    const status = document.getElementById('status');
+    const qrImg = document.getElementById('qr');
 
-    async function loadSession() {
-      try {
-        const res = await fetch('/session');
-        const data = await res.json();
-        document.getElementById('session-data').textContent = JSON.stringify(data, null, 2);
-      } catch {
-        document.getElementById('session-data').textContent = 'Not ready yet...';
-        setTimeout(loadSession, 2000); // Retry
-      }
-    }
+    const ws = new WebSocket(`ws://${location.host}`);
 
-    loadQR();
-    loadSession();
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.qr) {
+        qrImg.src = data.qr;
+        status.innerText = 'Scan this QR in WhatsApp';
+      }
+
+      if (data.status === 'connected') {
+        status.innerText = '✅ Logged in as ' + data.user.name;
+        qrImg.style.display = 'none';
+      }
+    };
   </script>
 </body>
 </html>
