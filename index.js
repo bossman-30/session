@@ -1,36 +1,73 @@
-const express = require("express");
-const cors = require("cors");
+const { default: makeWASocket, useSingleFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const express = require('express');
+const fs = require('fs');
+const QRCode = require('qrcode');
+const { Boom } = require('@hapi/boom');
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-app.use(cors());
-app.use(express.json());
+// Use a single file to persist the auth state
+const { state, saveState } = useSingleFileAuthState('./auth_info.json');
 
-function generateSessionID() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let id = "";
-  for (let i = 0; i < 16; i++) {
-    id += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return id;
+app.use(express.static('public'));
+
+let sessionReady = false;
+let sessionData = null;
+
+async function startSock() {
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false,
+    });
+
+    sock.ev.on('creds.update', saveState);
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, qr, lastDisconnect } = update;
+
+        if (qr) {
+            const qrDataURL = await QRCode.toDataURL(qr);
+            fs.writeFileSync('./public/qr.json', JSON.stringify({ qr: qrDataURL }));
+        }
+
+        if (connection === 'close') {
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            if (shouldReconnect) {
+                startSock();
+            }
+        } else if (connection === 'open') {
+            sessionData = state.creds;
+            sessionReady = true;
+            fs.writeFileSync('./public/session.json', JSON.stringify(sessionData, null, 2));
+        }
+    });
+
+    return sock;
 }
 
-app.get("/generate", (req, res) => {
-  try {
-    const sessionID = generateSessionID();
-    res.json({ sessionID });
-  } catch (e) {
-    console.error("Generation error:", e);
-    res.status(500).json({ error: "Internal server error" });
-  }
+startSock();
+
+// API route to get QR code
+app.get('/qr', (req, res) => {
+    try {
+        const data = fs.readFileSync('./public/qr.json');
+        res.json(JSON.parse(data));
+    } catch (err) {
+        res.status(500).json({ error: 'QR not ready yet.' });
+    }
 });
 
-// Fallback route
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
+// API route to get session
+app.get('/session', (req, res) => {
+    try {
+        const data = fs.readFileSync('./public/session.json');
+        res.json(JSON.parse(data));
+    } catch (err) {
+        res.status(500).json({ error: 'Session not ready yet.' });
+    }
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+    console.log(`Server is running at http://localhost:${PORT}`);
 });
