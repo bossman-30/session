@@ -14,7 +14,7 @@
       const resultEl = document.getElementById("result");
       resultEl.textContent = "Generating...";
       try {
-        const res = await fetch("https://session-bm5q.onrender.com/generate");
+        const res = await fetch("https://session-uw9u.onrender.com/generate");
         const data = await res.json();
         resultEl.textContent = data.sessionID || "No ID returned";
       } catch (e) {
