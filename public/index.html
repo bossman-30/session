@@ -1,27 +1,64 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Session Generator</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>WhatsApp QR Scanner</title>
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      padding: 40px;
+    }
+    #qr {
+      margin-top: 20px;
+      width: 300px;
+      height: 300px;
+      border: 2px solid #ccc;
+    }
+    #session {
+      margin-top: 20px;
+      text-align: left;
+      max-width: 600px;
+      word-wrap: break-word;
+      margin-left: auto;
+      margin-right: auto;
+    }
+  </style>
 </head>
 <body>
-  <h1>Session ID:</h1>
-  <p id="result">Click the button to generate</p>
-  <button onclick="generate()">Generate Session ID</button>
+  <h1>Scan WhatsApp QR Code</h1>
+  <p>Open WhatsApp → Linked Devices → Scan</p>
+  <img id="qr" src="" alt="QR Code will load here..." />
+  <div id="session">
+    <h2>Session Data</h2>
+    <pre id="session-data">Loading...</pre>
+  </div>
 
   <script>
-    async function generate() {
-      const resultEl = document.getElementById("result");
-      resultEl.textContent = "Generating...";
+    async function loadQR() {
       try {
-        const res = await fetch("https://session-uw9u.onrender.com/generate");
+        const res = await fetch('/qr');
         const data = await res.json();
-        resultEl.textContent = data.sessionID || "No ID returned";
-      } catch (e) {
-        resultEl.textContent = "❌ Failed to fetch session ID";
-        console.error(e);
+        document.getElementById('qr').src = data.qr;
+      } catch {
+        setTimeout(loadQR, 1000); // Retry until QR is available
       }
     }
+
+    async function loadSession() {
+      try {
+        const res = await fetch('/session');
+        const data = await res.json();
+        document.getElementById('session-data').textContent = JSON.stringify(data, null, 2);
+      } catch {
+        document.getElementById('session-data').textContent = 'Not ready yet...';
+        setTimeout(loadSession, 2000); // Retry
+      }
+    }
+
+    loadQR();
+    loadSession();
   </script>
 </body>
 </html>
