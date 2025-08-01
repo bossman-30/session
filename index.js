@@ -1,46 +1,36 @@
-const express = require('express');
-const { default: makeWASocket, useSingleFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const { unlinkSync, existsSync, readFileSync } = require('fs');
-const QRCode = require('qrcode');
+const express = require("express");
+const cors = require("cors");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-app.use(express.static('public'));
+app.use(cors());
+app.use(express.json());
 
-app.get('/generate', async (req, res) => {
-  const sessionPath = './auth_info.json';
-  const { state, saveState } = useSingleFileAuthState(sessionPath);
+function generateSessionID() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let id = "";
+  for (let i = 0; i < 16; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return id;
+}
 
-  const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-  });
+app.get("/generate", (req, res) => {
+  try {
+    const sessionID = generateSessionID();
+    res.json({ sessionID });
+  } catch (e) {
+    console.error("Generation error:", e);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
-  sock.ev.on('connection.update', async (update) => {
-    const { connection, qr } = update;
-
-    if (qr) {
-      const qrImage = await QRCode.toDataURL(qr);
-      res.json({ qr: qrImage });
-    }
-
-    if (connection === 'open') {
-      const sessionRaw = readFileSync(sessionPath, 'utf-8');
-      res.json({ session: sessionRaw });
-
-      sock.end();
-      if (existsSync(sessionPath)) unlinkSync(sessionPath);
-    }
-
-    if (connection === 'close') {
-      if ((update.lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut) {
-        makeWASocket({ auth: state });
-      }
-    }
-  });
+// Fallback route
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
