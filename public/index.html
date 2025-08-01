@@ -1,30 +1,25 @@
-
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>WhatsApp SESSION_ID Generator</title>
+  <meta charset="UTF-8">
+  <title>Session Generator</title>
 </head>
 <body>
-  <h2>Generate WhatsApp SESSION_ID</h2>
-  <button onclick="generate()">Generate</button>
-  <div id="qr"></div>
-  <pre id="output"></pre>
+  <h1>Session ID:</h1>
+  <p id="result">Click the button to generate</p>
+  <button onclick="generate()">Generate Session ID</button>
 
   <script>
     async function generate() {
-      document.getElementById('output').innerText = 'Generating QR...';
-      const res = await fetch('/generate');
-      const data = await res.json();
-
-      if (data.qr) {
-        const img = document.createElement('img');
-        img.src = data.qr;
-        document.getElementById('qr').innerHTML = '';
-        document.getElementById('qr').appendChild(img);
-      }
-
-      if (data.session) {
-        document.getElementById('output').innerText = data.session;
+      const resultEl = document.getElementById("result");
+      resultEl.textContent = "Generating...";
+      try {
+        const res = await fetch("https://session-bm5q.onrender.com/generate");
+        const data = await res.json();
+        resultEl.textContent = data.sessionID || "No ID returned";
+      } catch (e) {
+        resultEl.textContent = "❌ Failed to fetch session ID";
+        console.error(e);
       }
     }
   </script>
