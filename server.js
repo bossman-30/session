@@ -1,301 +1,69 @@
-// server.js - WhatsApp Web QR Login Backend
-const express = require('express');
-const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
-const crypto = require('crypto');
+// Install dependencies first: // npm install express @whiskeysockets/baileys qrcode-terminal cors
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const express = require('express'); const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys'); const qrcode = require('qrcode-terminal'); const cors = require('cors'); const fs = require('fs'); const path = require('path');
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public')); // Serve static files
+const app = express(); const PORT = process.env.PORT || 3000;
 
-// In-memory session storage (use Redis or database in production)
-const sessions = new Map();
-const connectedSessions = new Map();
+app.use(cors()); app.use(express.json()); app.use(express.static(path.join(__dirname, 'public')));
 
-// Session model
-class WhatsAppSession {
-    constructor() {
-        this.id = 'WA_' + crypto.randomBytes(8).toString('hex') + '_' + Date.now();
-        this.status = 'waiting'; // waiting, connected, expired, error
-        this.created = new Date();
-        this.qrToken = crypto.randomBytes(16).toString('hex');
-        this.qrData = `whatsapp://qr/${this.id}?token=${this.qrToken}`;
-        this.scanned = false;
-        this.deviceInfo = null;
-        this.connectedAt = null;
-        this.lastActivity = new Date();
-        this.expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-    }
+// Session folder const SESSION_FOLDER = './auth_info';
 
-    isExpired() {
-        return new Date() > this.expiresAt;
-    }
+// Ensure session folder exists if (!fs.existsSync(SESSION_FOLDER)) fs.mkdirSync(SESSION_FOLDER);
 
-    markAsScanned(deviceInfo = null) {
-        this.status = 'connected';
-        this.scanned = true;
-        this.connectedAt = new Date();
-        this.deviceInfo = deviceInfo || 'Unknown Device';
-        this.lastActivity = new Date();
-    }
+let sock; let currentQR = null; let connectedUser = null;
 
-    updateActivity() {
-        this.lastActivity = new Date();
-    }
+async function startWhatsApp() { const { state, saveCreds } = await useMultiFileAuthState(SESSION_FOLDER);
 
-    toJSON() {
-        return {
-            id: this.id,
-            status: this.status,
-            created: this.created,
-            qrData: this.qrData,
-            scanned: this.scanned,
-            deviceInfo: this.deviceInfo,
-            connectedAt: this.connectedAt,
-            lastActivity: this.lastActivity,
-            expiresAt: this.expiresAt
-        };
-    }
-}
-
-// Utility functions
-function cleanupExpiredSessions() {
-    const now = new Date();
-    for (const [sessionId, session] of sessions.entries()) {
-        if (session.isExpired() && session.status !== 'connected') {
-            sessions.delete(sessionId);
-            console.log(`Cleaned up expired session: ${sessionId}`);
-        }
-    }
-}
-
-// Run cleanup every minute
-setInterval(cleanupExpiredSessions, 60000);
-
-// API Routes
-
-// Create new session and generate QR code
-app.post('/api/session/create', (req, res) => {
-    try {
-        const session = new WhatsAppSession();
-        sessions.set(session.id, session);
-        
-        console.log(`New session created: ${session.id}`);
-        
-        res.json({
-            success: true,
-            session: session.toJSON()
-        });
-    } catch (error) {
-        console.error('Error creating session:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to create session'
-        });
-    }
+sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: true // We'll also return it via API
 });
 
-// Get session status
-app.get('/api/session/:sessionId', (req, res) => {
-    try {
-        const { sessionId } = req.params;
-        const session = sessions.get(sessionId);
-        
-        if (!session) {
-            return res.status(404).json({
-                success: false,
-                error: 'Session not found'
-            });
-        }
-        
-        if (session.isExpired() && session.status !== 'connected') {
-            session.status = 'expired';
-            sessions.delete(sessionId);
-            return res.json({
-                success: true,
-                session: { ...session.toJSON(), status: 'expired' }
-            });
-        }
-        
-        res.json({
-            success: true,
-            session: session.toJSON()
-        });
-    } catch (error) {
-        console.error('Error getting session:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get session'
-        });
-    }
-});
+sock.ev.on('creds.update', saveCreds);
 
-// Simulate QR code scan (for testing)
-app.post('/api/session/:sessionId/scan', (req, res) => {
-    try {
-        const { sessionId } = req.params;
-        const { deviceInfo } = req.body;
-        
-        const session = sessions.get(sessionId);
-        
-        if (!session) {
-            return res.status(404).json({
-                success: false,
-                error: 'Session not found'
-            });
-        }
-        
-        if (session.isExpired()) {
-            return res.status(400).json({
-                success: false,
-                error: 'Session expired'
-            });
-        }
-        
-        if (session.status === 'connected') {
-            return res.status(400).json({
-                success: false,
-                error: 'Session already connected'
-            });
-        }
-        
-        session.markAsScanned(deviceInfo);
-        connectedSessions.set(sessionId, session);
-        
-        console.log(`Session scanned: ${sessionId}`);
-        
-        res.json({
-            success: true,
-            session: session.toJSON()
-        });
-    } catch (error) {
-        console.error('Error scanning session:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to scan session'
-        });
+sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    if (qr) {
+        console.log('Scan QR below to login:');
+        qrcode.generate(qr, { small: true });
+        currentQR = qr;
     }
-});
 
-// WhatsApp webhook simulation (this would be replaced with actual WhatsApp Business API webhook)
-app.post('/api/whatsapp/webhook', (req, res) => {
-    try {
-        const { sessionId, action, deviceInfo } = req.body;
-        
-        if (action === 'qr_scanned') {
-            const session = sessions.get(sessionId);
-            if (session && session.status === 'waiting') {
-                session.markAsScanned(deviceInfo);
-                connectedSessions.set(sessionId, session);
-                console.log(`WhatsApp QR scanned for session: ${sessionId}`);
-            }
-        }
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('Webhook error:', error);
-        res.status(500).json({ success: false });
-    }
-});
-
-// Get all active sessions (admin endpoint)
-app.get('/api/admin/sessions', (req, res) => {
-    try {
-        const activeSessions = Array.from(sessions.values())
-            .filter(session => !session.isExpired())
-            .map(session => session.toJSON());
-        
-        res.json({
-            success: true,
-            sessions: activeSessions,
-            total: activeSessions.length
-        });
-    } catch (error) {
-        console.error('Error getting sessions:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to get sessions'
-        });
-    }
-});
-
-// Delete session
-app.delete('/api/session/:sessionId', (req, res) => {
-    try {
-        const { sessionId } = req.params;
-        const deleted = sessions.delete(sessionId);
-        connectedSessions.delete(sessionId);
-        
-        if (deleted) {
-            console.log(`Session deleted: ${sessionId}`);
-            res.json({ success: true, message: 'Session deleted' });
+    if (connection === 'close') {
+        const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        console.log('connection closed due to', lastDisconnect.error, ', reconnecting', shouldReconnect);
+        if (shouldReconnect) {
+            startWhatsApp();
         } else {
-            res.status(404).json({ success: false, error: 'Session not found' });
+            console.log('Logged out. Delete auth_info to re-login.');
         }
-    } catch (error) {
-        console.error('Error deleting session:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to delete session'
-        });
+    } else if (connection === 'open') {
+        console.log('Connected to WhatsApp');
+        connectedUser = sock.user;
+        currentQR = null;
     }
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-    res.json({
-        success: true,
-        status: 'healthy',
-        timestamp: new Date(),
-        sessions: {
-            total: sessions.size,
-            connected: connectedSessions.size
-        }
-    });
+}
+
+startWhatsApp();
+
+// API to get current QR code or session info app.get('/api/status', (req, res) => { if (connectedUser) { res.json({ success: true, status: 'connected', sessionId: connectedUser.id }); } else if (currentQR) { res.json({ success: true, status: 'waiting', qr: currentQR }); } else { res.json({ success: false, status: 'initializing' }); } });
+
+// API to send a message app.post('/api/send', async (req, res) => { const { number, message } = req.body; if (!number || !message) { return res.status(400).json({ success: false, error: 'number and message required' }); }
+
+try {
+    const jid = number.includes('@s.whatsapp.net') ? number : `${number}@s.whatsapp.net`;
+    await sock.sendMessage(jid, { text: message });
+    res.json({ success: true, message: 'Message sent successfully' });
+} catch (err) {
+    console.error('Send message error:', err);
+    res.status(500).json({ success: false, error: 'Failed to send message' });
+}
+
 });
 
-// Serve the frontend
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/public/index.html');
-});
+// Health Check app.get('/api/health', (req, res) => { res.json({ success: true, status: connectedUser ? 'connected' : 'disconnected', user: connectedUser || null }); });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error('Unhandled error:', err);
-    res.status(500).json({
-        success: false,
-        error: 'Internal server error'
-    });
-});
+app.listen(PORT, () => { console.log(WhatsApp API Server running on http://localhost:${PORT}); });
 
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: 'Endpoint not found'
-    });
-});
-
-// Start server
-app.listen(PORT, () => {
-    console.log(`WhatsApp QR Login Server running on port ${PORT}`);
-    console.log(`API endpoints available at http://localhost:${PORT}/api`);
-    console.log(`Frontend available at http://localhost:${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully');
-    process.exit(0);
-});
-
-process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully');
-    process.exit(0);
-});
-
-module.exports = app;
