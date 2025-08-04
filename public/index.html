@@ -2,237 +2,63 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WhatsApp QR Login</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        /* --- Styling --- */
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #128C7E 0%, #075E54 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-        .container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            padding: 40px;
-            text-align: center;
-            max-width: 400px;
-            width: 100%;
-        }
-        .logo {
-            width: 80px; height: 80px;
-            background: #25D366;
-            border-radius: 50%;
-            margin: 0 auto 20px;
-            display: flex; align-items: center; justify-content: center;
-            color: white; font-size: 40px;
-        }
-        h1 { color: #075E54; margin-bottom: 10px; font-size: 28px; }
-        .subtitle { color: #667781; margin-bottom: 30px; font-size: 16px; }
-        .qr-container {
-            background: #f8f9fa; border-radius: 15px; padding: 20px;
-            margin-bottom: 20px; position: relative; min-height: 300px;
-            display: flex; align-items: center; justify-content: center;
-        }
-        #qrcode { display: flex; justify-content: center; align-items: center; }
-        .status { padding: 15px; border-radius: 10px; margin-bottom: 20px; font-weight: 500; }
-        .status.waiting { background: #e3f2fd; color: #1976d2; border: 1px solid #bbdefb; }
-        .status.connected { background: #e8f5e8; color: #2e7d32; border: 1px solid #c8e6c9; }
-        .status.error { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-        .session-info { background: #f5f5f5; border-radius: 10px; padding: 20px; margin-top: 20px; text-align: left; }
-        .session-info h3 { color: #075E54; margin-bottom: 10px; }
-        .session-detail { margin-bottom: 8px; font-family: monospace; font-size: 14px; }
-        .session-detail strong { color: #075E54; }
-        .refresh-btn {
-            background: #25D366; color: white; border: none; padding: 12px 24px;
-            border-radius: 25px; cursor: pointer; font-size: 16px; font-weight: 500;
-            transition: all 0.3s ease;
-        }
-        .refresh-btn:hover { background: #128C7E; transform: translateY(-2px); }
-        .loading { display: inline-block; width: 20px; height: 20px; border: 3px solid #f3f3f3; border-top: 3px solid #25D366; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .instructions { background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 10px; padding: 15px; margin-top: 20px; text-align: left; }
-        .instructions h4 { color: #856404; margin-bottom: 10px; }
-        .instructions ol { color: #856404; padding-left: 20px; }
-        .instructions li { margin-bottom: 5px; }
+        body { font-family: sans-serif; text-align: center; margin-top: 100px; }
+        #qrcode { margin: 20px auto; }
+        .connected { color: green; font-size: 20px; }
+        .waiting { color: orange; font-size: 18px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="logo">📱</div>
-        <h1>WhatsApp Web</h1>
-        <p class="subtitle">Scan the QR code to log in</p>
-        
-        <div class="status waiting" id="status">Waiting for scan...</div>
-        
-        <div class="qr-container">
-            <div id="qrcode"></div>
-        </div>
-        
-        <button class="refresh-btn" onclick="generateNewSession()">
-            <span id="btnText">Refresh QR Code</span>
-            <span id="btnLoading" class="loading" style="display: none;"></span>
-        </button>
-        
-        <button class="refresh-btn" onclick="simulateScanForDemo()" style="background: #ff9800; margin-left: 10px;">
-            Simulate Scan (Demo)
-        </button>
-        
-        <div class="session-info" id="sessionInfo" style="display: none;">
-            <h3>Session Details</h3>
-            <div class="session-detail"><strong>Session ID:</strong> <span id="sessionId"></span></div>
-            <div class="session-detail"><strong>Status:</strong> <span id="sessionStatus"></span></div>
-            <div class="session-detail"><strong>Created:</strong> <span id="sessionTime"></span></div>
-            <div class="session-detail"><strong>Device:</strong> <span id="deviceInfo"></span></div>
-        </div>
-        
-        <div class="instructions">
-            <h4>How to scan:</h4>
-            <ol>
-                <li>Open WhatsApp on your phone</li>
-                <li>Go to Settings > Linked Devices</li>
-                <li>Tap "Link a Device"</li>
-                <li>Scan this QR code with your phone</li>
-            </ol>
-        </div>
+
+    <h1>WhatsApp QR Login</h1>
+    <div id="status" class="waiting">Waiting for QR code...</div>
+    <div id="qrcode"></div>
+    <div id="sessionInfo" style="display:none;">
+        <p class="connected">Connected!</p>
+        <p><strong>Session ID:</strong> <span id="sessionId"></span></p>
     </div>
 
-    <!-- QRCode.js (Browser Version) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
     <script>
-        let currentSessionId = null;
-        let statusCheckInterval = null;
-        let sessionData = null;
+        async function fetchStatus() {
+            const res = await fetch('/api/status');
+            const data = await res.json();
 
-        const API_BASE = window.location.origin + '/api';
-
-        const mockBackend = {
-            sessions: new Map(),
-            generateSession() {
-                const sessionId = 'WA_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-                const session = {
-                    id: sessionId,
-                    status: 'waiting',
-                    created: new Date().toISOString(),
-                    qrData: `whatsapp://qr/${sessionId}?token=${Math.random().toString(36).substring(2, 15)}`,
-                    scanned: false,
-                    deviceInfo: null
-                };
-                this.sessions.set(sessionId, session);
-                return session;
-            },
-            getSession(sessionId) { return this.sessions.get(sessionId); },
-            simulateScan(sessionId) {
-                const session = this.sessions.get(sessionId);
-                if (session) {
-                    session.status = 'connected';
-                    session.scanned = true;
-                    session.deviceInfo = 'iPhone 14 Pro - iOS 17.1';
-                    session.connectedAt = new Date().toISOString();
-                    this.sessions.set(sessionId, session);
-                }
-                return session;
-            }
-        };
-
-        async function generateNewSession() {
-            try {
-                showLoading(true);
-                updateStatus('Generating new QR code...', 'waiting');
-                if (statusCheckInterval) clearInterval(statusCheckInterval);
-
-                await new Promise(resolve => setTimeout(resolve, 1000));
-
-                sessionData = mockBackend.generateSession();
-                currentSessionId = sessionData.id;
-
-                await generateQRCode(sessionData.qrData);
-
-                updateStatus('Waiting for scan...', 'waiting');
-                hideSessionInfo();
-                startStatusCheck();
-                showLoading(false);
-
-            } catch (error) {
-                console.error('Error generating session:', error);
-                updateStatus('Error generating QR code. Please try again.', 'error');
-                showLoading(false);
-            }
-        }
-
-        async function generateQRCode(data) {
-            const qrContainer = document.getElementById('qrcode');
-            qrContainer.innerHTML = '';
-            try {
-                new QRCode(qrContainer, {
-                    text: data,
-                    width: 250,
-                    height: 250,
-                    colorDark: "#000000",
-                    colorLight: "#ffffff",
-                    correctLevel: QRCode.CorrectLevel.M
-                });
-            } catch (error) {
-                console.error('QR code generation failed:', error);
-                qrContainer.innerHTML = '<p style="color: red;">Failed to generate QR code</p>';
-            }
-        }
-
-        function startStatusCheck() {
-            statusCheckInterval = setInterval(() => {
-                if (!currentSessionId) return;
-                const session = mockBackend.getSession(currentSessionId);
-                if (session && session.status === 'connected') {
-                    updateStatus('Connected successfully!', 'connected');
-                    showSessionInfo(session);
-                    clearInterval(statusCheckInterval);
-                }
-            }, 2000);
-        }
-
-        function simulateScanForDemo() {
-            if (currentSessionId) mockBackend.simulateScan(currentSessionId);
-        }
-
-        function updateStatus(message, type) {
             const statusEl = document.getElementById('status');
-            statusEl.textContent = message;
-            statusEl.className = `status ${type}`;
+            const qrContainer = document.getElementById('qrcode');
+            const sessionInfo = document.getElementById('sessionInfo');
+            const sessionIdSpan = document.getElementById('sessionId');
+
+            if (data.success) {
+                if (data.status === 'waiting') {
+                    statusEl.textContent = 'Scan the QR Code with WhatsApp';
+                    statusEl.className = 'waiting';
+                    sessionInfo.style.display = 'none';
+
+                    // Generate QR Code
+                    qrContainer.innerHTML = '';
+                    new QRCode(qrContainer, {
+                        text: data.qr,
+                        width: 250,
+                        height: 250
+                    });
+                } else if (data.status === 'connected') {
+                    statusEl.style.display = 'none';
+                    qrContainer.style.display = 'none';
+                    sessionInfo.style.display = 'block';
+                    sessionIdSpan.textContent = data.sessionId;
+                }
+            } else {
+                statusEl.textContent = 'Initializing...';
+            }
         }
 
-        function showLoading(show) {
-            document.getElementById('btnText').style.display = show ? 'none' : 'inline';
-            document.getElementById('btnLoading').style.display = show ? 'inline-block' : 'none';
-            document.querySelector('.refresh-btn').disabled = show;
-        }
-
-        function showSessionInfo(session) {
-            document.getElementById('sessionId').textContent = session.id;
-            document.getElementById('sessionStatus').textContent = session.status.toUpperCase();
-            document.getElementById('sessionTime').textContent = new Date(session.created).toLocaleString();
-            document.getElementById('deviceInfo').textContent = session.deviceInfo || 'Unknown Device';
-            document.getElementById('sessionInfo').style.display = 'block';
-        }
-
-        function hideSessionInfo() {
-            document.getElementById('sessionInfo').style.display = 'none';
-        }
-
-        window.onload = function() {
-            generateNewSession();
-            console.log('WhatsApp QR Login initialized');
-        };
-
-        window.onbeforeunload = function() {
-            if (statusCheckInterval) clearInterval(statusCheckInterval);
-        };
+        // Auto-refresh every 5 seconds
+        setInterval(fetchStatus, 5000);
+        fetchStatus(); // Initial call
     </script>
+
 </body>
 </html>
