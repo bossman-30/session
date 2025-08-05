@@ -2,7 +2,7 @@ const { spawnSync, spawn } = require('child_process')
 const { existsSync, readFileSync, writeFileSync } = require('fs')
 const path = require('path')
 
-const SESSION_ID = 'PATRON-MD~d477e0586a7f45465a85eaa6460d5d6d' // Edit this line only, don't remove ' <- this symbol
+const SESSION_ID = 'PATRON-MD~ae5606bfcf833c66861417417206ab9e' // Edit this line only, don't remove ' <- this symbol
 
 // Constants
 const APP_DIR = 'PATRON-MD' // Standardized directory name
