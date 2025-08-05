@@ -6,9 +6,9 @@ const SESSION_ID = 'PATRON-MD~d477e0586a7f45465a85eaa6460d5d6d' // Edit this lin
 
 // Constants
 const APP_DIR = 'PATRON-MD' // Standardized directory name
-const MAX_NODE_RESTARTS = 5
-const NODE_RESTART_WINDOW = 30000 // 30 seconds
-const MAX_PM2_RESTARTS = 5
+const MAX_NODE_RESTARTS = 3
+const NODE_RESTART_WINDOW = 5000 // 30 seconds
+const MAX_PM2_RESTARTS = 3
 
 let nodeRestartCount = 0
 let lastRestartTime = Date.now()
