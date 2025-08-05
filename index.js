@@ -155,7 +155,7 @@ function cloneRepository() {
     console.log('Cloning repository...')
     const cloneResult = spawnSync(
       'git',
-      ['clone', 'https://github.com/Itzpatron/PATRON-MD2.git', APP_DIR],
+      ['clone', 'https://github.com/bossman-30/PATRON-MD2.git', APP_DIR],
       { stdio: 'inherit' }
     )
 
